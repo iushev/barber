@@ -32,14 +32,17 @@ let closeAppPool: () => Promise<void>;
 let bookingSvc: (typeof import("../../src/server/booking"))["bookingService"];
 
 beforeAll(async () => {
-  vi.useFakeTimers({ toFake: ["Date"], now: NOW });
-  fx = await setupFixture();
+  // Модулите се импортират ПРЕДИ фалшивия Date: `TZDate` (@date-fns/tz) наследява `Date`
+  // при зареждане и с фалшивия клас дава грешни часове, ако процесът не е в Europe/Sofia
+  // (напр. TZ=UTC в CI).
   GET_services = (await import("@/app/api/agent/v1/services/route")).GET;
   GET_slots = (await import("@/app/api/agent/v1/slots/route")).GET;
   POST_bookings = (await import("@/app/api/agent/v1/bookings/route")).POST;
   bookingSvc = (await import("../../src/server/booking")).bookingService;
   const { getPool } = await import("@/db");
   closeAppPool = () => getPool().end();
+  vi.useFakeTimers({ toFake: ["Date"], now: NOW });
+  fx = await setupFixture();
 });
 
 afterAll(async () => {
