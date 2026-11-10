@@ -1,0 +1,75 @@
+{
+  "id": "BarberPurge00001",
+  "name": "Barber · Chat history purge (GDPR)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": false
+  },
+  "nodes": [
+    {
+      "id": "7a2e2d4f-7d6f-4b4d-8b1f-2b3c4d5e6f01",
+      "name": "Purge request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "chat-purge",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chat-purge",
+        "authentication": "basicAuth",
+        "responseMode": "lastNode",
+        "responseData": "firstEntryJson",
+        "options": {}
+      },
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "BarberChatAuth01",
+          "name": "Barber · Chat Basic Auth"
+        }
+      }
+    },
+    {
+      "id": "7a2e2d4f-7d6f-4b4d-8b1f-2b3c4d5e6f02",
+      "name": "Delete chat history",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH ids AS (SELECT unnest(string_to_array($1, '|')) AS s), d AS (DELETE FROM n8n_chat_histories h USING ids WHERE h.session_id = ids.s OR left(h.session_id, length(ids.s) + 2) = ids.s || '__' RETURNING 1) SELECT count(*)::int AS deleted FROM d",
+        "options": {
+          "queryReplacement": "={{ ($json.body.sessionIds || []).filter(s => /^[A-Za-z0-9_-]{8,128}$/.test(s)).join('|') }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "BarberN8nPg00001",
+          "name": "Barber · n8n DB (chat memory)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Purge request": {
+      "main": [
+        [
+          {
+            "node": "Delete chat history",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {}
+}

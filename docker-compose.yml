@@ -1,0 +1,169 @@
+# Production конфигурация. Без reverse proxy: TLS/публичният достъп се уреждат
+# извън проекта. На сървъра задай COMPOSE_FILE=docker-compose.yml в .env, за да
+# не се зарежда docker-compose.override.yml (той е само за локална разработка).
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:18.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?задай POSTGRES_SUPERUSER_PASSWORD}
+      POSTGRES_DB: postgres
+      # Използват се само от init скрипта при първото създаване на volume-а.
+      APP_DB_NAME: barbershop
+      APP_DB_USER: ${APP_DB_USER:-barbershop}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?задай APP_DB_PASSWORD}
+      N8N_DB_NAME: n8n
+      N8N_DB_USER: ${N8N_DB_USER:-n8n}
+      N8N_DB_PASSWORD: ${N8N_DB_PASSWORD:?задай N8N_DB_PASSWORD}
+      TZ: UTC
+    volumes:
+      # PostgreSQL 18+ образите очакват volume на /var/lib/postgresql (PGDATA е в поддиректория по версия).
+      - pgdata:/var/lib/postgresql
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    # Без `ports`: Postgres не е достъпен от хоста.
+    networks: [internal]
+    healthcheck:
+      # -h 127.0.0.1: временният сървър по време на init слуша само на socket,
+      # така че healthcheck-ът минава едва когато init скриптовете са готови.
+      test: ["CMD-SHELL", 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging: *default-logging
+
+  app:
+    build:
+      context: .
+      target: runner
+    image: barbershop-app:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${APP_DB_USER:-barbershop}:${APP_DB_PASSWORD}@postgres:5432/barbershop
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?задай PUBLIC_BASE_URL}
+      BUSINESS_TIMEZONE: ${BUSINESS_TIMEZONE:-Europe/Sofia}
+      CURRENCY: ${CURRENCY:-EUR}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      ENABLE_HSTS: ${ENABLE_HSTS:-false}
+      SLOT_STEP_MIN: ${SLOT_STEP_MIN:-15}
+      MIN_LEAD_MIN: ${MIN_LEAD_MIN:-60}
+      BOOKING_HORIZON_DAYS: ${BOOKING_HORIZON_DAYS:-60}
+      MAX_ACTIVE_BOOKINGS_PER_PHONE: ${MAX_ACTIVE_BOOKINGS_PER_PHONE:-3}
+      CANCEL_CUTOFF_HOURS: ${CANCEL_CUTOFF_HOURS:-2}
+      BOOKING_RATE_LIMIT_PER_CLIENT_HOUR: ${BOOKING_RATE_LIMIT_PER_CLIENT_HOUR:-10}
+      BOOKING_RATE_LIMIT_PER_PHONE_DAY: ${BOOKING_RATE_LIMIT_PER_PHONE_DAY:-6}
+      AGENT_API_KEY: ${AGENT_API_KEY:-}
+      AGENT_API_RATE_LIMIT_PER_MIN: ${AGENT_API_RATE_LIMIT_PER_MIN:-120}
+      IDEMPOTENCY_TTL_HOURS: ${IDEMPOTENCY_TTL_HOURS:-24}
+      N8N_CHAT_URL: ${N8N_CHAT_URL:-}
+      N8N_CHAT_USER: ${N8N_CHAT_USER:-}
+      N8N_CHAT_PASSWORD: ${N8N_CHAT_PASSWORD:-}
+      N8N_CHAT_PURGE_URL: ${N8N_CHAT_PURGE_URL:-}
+      CHAT_RATE_LIMIT_PER_MIN: ${CHAT_RATE_LIMIT_PER_MIN:-10}
+      CHAT_RATE_LIMIT_PER_DAY: ${CHAT_RATE_LIMIT_PER_DAY:-150}
+      CHAT_MAX_MESSAGES_PER_SESSION: ${CHAT_MAX_MESSAGES_PER_SESSION:-60}
+      CHAT_TIMEOUT_MS: ${CHAT_TIMEOUT_MS:-90000}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      UPLOADS_DIR: /app/uploads
+      DATA_RETENTION_MONTHS: ${DATA_RETENTION_MONTHS:-24}
+    ports:
+      - "${APP_BIND:-0.0.0.0}:${APP_PORT:-3000}:3000"
+    volumes:
+      - uploads:/app/uploads
+    networks: [internal, public]
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      # Време за миграциите при старт.
+      start_period: 30s
+    logging: *default-logging
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.47.3
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: ${N8N_DB_USER:-n8n}
+      DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?задай N8N_ENCRYPTION_KEY}
+      GENERIC_TIMEZONE: Europe/Sofia
+      TZ: Europe/Sofia
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      N8N_PORT: 5678
+      WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://n8n:5678/}
+      # Редакторът се ползва през SSH тунел по http → cookie без Secure флаг.
+      N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE:-false}
+      # Телеметрия и външни повиквания — изключени.
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_TEMPLATES_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      # Изпълненията съдържат имена и телефони: не пазим успешните, чистим бързо.
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: ${N8N_EXECUTIONS_MAX_AGE_HOURS:-24}
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
+      # n8n 2.x първо „меко“ трие незапазените изпълнения (с вход: имена/телефони), после ги
+      # трие окончателно след буфер (по подразбиране 1 ч + интервал 15 мин) → до ~5 мин.
+      EXECUTIONS_DATA_HARD_DELETE_BUFFER: "0"
+      EXECUTIONS_DATA_PRUNE_HARD_DELETE_INTERVAL: "5"
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "false"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"
+    ports:
+      # Само loopback: достъп до редактора през SSH тунел. Webhook-ите НЕ са публични.
+      - "${N8N_EDITOR_BIND:-127.0.0.1}:${N8N_EDITOR_PORT:-5678}:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n:/opt/barber-n8n:ro
+    # `egress` е нужна за изходящи заявки към OpenAI API и за loopback порта на
+    # редактора (Docker не публикува портове от internal мрежа).
+    networks: [internal, egress]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5678/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    logging: *default-logging
+
+networks:
+  # Без изход към интернет; тук общуват app, postgres и n8n.
+  internal:
+    internal: true
+  # За публикувания порт на app.
+  public:
+  # Изходящ интернет за n8n (OpenAI) + loopback порт на редактора.
+  egress:
+
+volumes:
+  pgdata:
+  n8n_data:
+  uploads:

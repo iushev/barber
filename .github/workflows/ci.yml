@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Lint, типове, миграции, тестове, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_USER: barbershop
+          POSTGRES_PASSWORD: barbershop
+          POSTGRES_DB: barbershop_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U barbershop -d barbershop_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://barbershop:barbershop@127.0.0.1:5432/barbershop_test
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+      - name: Типове
+        run: npm run typecheck
+      - name: Форматиране
+        run: npm run format:check
+
+      - name: Drizzle — консистентност на миграциите
+        run: npx drizzle-kit check
+      - name: Drizzle — схемата няма незаписани промени
+        run: |
+          npx drizzle-kit generate
+          git status --porcelain drizzle/
+          test -z "$(git status --porcelain drizzle/)" || {
+            echo "::error::src/db/schema.ts е променен без миграция — пусни npm run db:generate и commit-ни drizzle/."
+            exit 1
+          }
+
+      - name: n8n workflow-ите съответстват на генератора
+        run: npm run n8n:build -- --check
+
+      - name: Unit + интеграционни тестове (Postgres)
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  e2e:
+    name: Docker образ + E2E (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: checks
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+
+      # Тайните в .env.example са placeholder-и — достатъчни за временна CI среда.
+      - name: .env за CI
+        run: cp .env.example .env
+
+      - name: Postgres (с публикуван порт за seed скрипта)
+        run: docker compose -f docker-compose.yml -f docker-compose.override.yml up -d --wait postgres
+
+      - name: Production образ на app (миграции + bootstrap на админа при старт)
+        run: |
+          docker compose -f docker-compose.yml up -d --build --no-deps --wait app
+          docker compose -f docker-compose.yml logs app
+
+      - name: Повторен старт — без нови миграции
+        run: |
+          docker compose -f docker-compose.yml restart app
+          sleep 5
+          docker compose -f docker-compose.yml logs app | tail -20
+
+      - name: Демо данни
+        run: npm run db:seed
+
+      - name: Playwright
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+
+      - name: Логове при грешка
+        if: failure()
+        run: docker compose -f docker-compose.yml logs --no-color app postgres
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7

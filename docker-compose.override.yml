@@ -1,0 +1,35 @@
+# Само за локална разработка (зарежда се автоматично от `docker compose up`).
+# В production: COMPOSE_FILE=docker-compose.yml.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:${POSTGRES_DEV_PORT:-5432}:5432"
+    # Публикуван порт изисква мрежа, която не е `internal`.
+    networks: [internal, egress]
+
+  app:
+    build:
+      target: dev
+    image: barbershop-app:dev
+    environment:
+      NODE_ENV: development
+      COOKIE_SECURE: "false"
+      WATCHPACK_POLLING: "true"
+    # Същият entrypoint като в production (миграции → bootstrap), после `next dev`.
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    healthcheck:
+      start_period: 90s
+
+  # Мок на OpenAI за smoke тестовете на чата (само с --profile mock):
+  #   docker compose --profile mock up -d mock-openai
+  #   OPENAI_API_KEY=mock OPENAI_BASE_URL=http://mock-openai:8080/v1 ./scripts/n8n/setup.sh
+  mock-openai:
+    profiles: [mock]
+    image: node:24-alpine
+    command: ["node", "/mock/mock-openai.mjs"]
+    volumes:
+      - ./tests/support/mock-openai.mjs:/mock/mock-openai.mjs:ro
+    networks: [internal]

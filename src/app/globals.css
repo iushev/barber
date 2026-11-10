@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #11100e;
+  --color-coal: #1b1916;
+  --color-char: #26231f;
+  --color-bone: #efe8dc;
+  --color-brass: #c39a5f;
+  --color-brass-deep: #9a7442;
+  --color-oxblood: #6e2420;
+
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display-face), "Arial Narrow", ui-sans-serif, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body {
+  background: var(--color-ink);
+  color: var(--color-bone);
+  font-family: var(--font-sans);
+}
+
+/* Фина „бръснарска“ лента: диагонални ивици в месинг и кървавочервено. */
+.pole-stripe {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--color-brass) 0 10px,
+    var(--color-ink) 10px 20px,
+    var(--color-oxblood) 20px 30px,
+    var(--color-ink) 30px 40px
+  );
+}
+
+/* Зърнеста текстура за фона на секциите (чист CSS, без изображения). */
+.grain {
+  background-image:
+    radial-gradient(circle at 20% 10%, rgb(195 154 95 / 0.08), transparent 40%),
+    radial-gradient(circle at 80% 90%, rgb(110 36 32 / 0.12), transparent 45%);
+}
+
+/* Точки между името и цената в ценоразписа. */
+.leader {
+  flex: 1;
+  border-bottom: 1px dotted rgb(239 232 220 / 0.25);
+  transform: translateY(-0.35em);
+  min-width: 1.5rem;
+}
+
+/* Placeholder за снимки — ясно маркиран за смяна. */
+.photo-placeholder {
+  background:
+    repeating-linear-gradient(
+      45deg,
+      rgb(239 232 220 / 0.04) 0 12px,
+      rgb(239 232 220 / 0.08) 12px 24px
+    ),
+    var(--color-char);
+}

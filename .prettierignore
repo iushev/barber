@@ -1,0 +1,7 @@
+.next
+node_modules
+dist-scripts
+drizzle
+package-lock.json
+n8n/workflows
+n8n/prompts

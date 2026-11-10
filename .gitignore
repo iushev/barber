@@ -1,0 +1,14 @@
+node_modules
+.next
+dist-scripts
+out
+*.tsbuildinfo
+next-env.d.ts
+.env
+.env.*
+!.env.example
+uploads
+playwright-report
+test-results
+.DS_Store
+/backups/
