@@ -10,7 +10,7 @@
 - **TypeScript 6.0** (не 7.0): npm избира 6.x заради peer зависимостите на
   `eslint-config-next`/`typescript-eslint`. Ще мигрираме, когато екосистемата поддържа 7.
 - **ESLint 9** по същата причина (peer на `eslint-config-next`).
-- Образи: `postgres:18.6-alpine`, `docker.n8n.io/n8nio/n8n:2.47.3` (stable към 2026-11-10), `node:24-alpine`.
+- Образи: `postgres:18.6-alpine`, `ghcr.io/n8n-io/n8n:2.47.3` (stable към 2026-11-10), `node:24-alpine`.
 
 ### Мрежи в Docker Compose (отклонение)
 
