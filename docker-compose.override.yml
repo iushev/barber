@@ -1,12 +1,6 @@
 # Само за локална разработка (зарежда се автоматично от `docker compose up`).
 # В production: COMPOSE_FILE=docker-compose.yml.
 services:
-  postgres:
-    ports:
-      - "127.0.0.1:${POSTGRES_DEV_PORT:-5432}:5432"
-    # Публикуван порт изисква мрежа, която не е `internal`.
-    networks: [internal, egress]
-
   app:
     build:
       target: dev

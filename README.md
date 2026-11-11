@@ -62,7 +62,7 @@ npm run db:seed                   # демо данни: 3 бръснаря, 7 �
 ```
 
 - `docker compose` зарежда автоматично `docker-compose.override.yml` (dev): app е в dev режим
-  с bind mount на кода, Postgres е достъпен на `127.0.0.1:5432` за скриптовете от хоста.
+  с bind mount на кода, Postgres е достъпен на `127.0.0.1:5432` за скриптовете от хоста (и в production, само на loopback).
 - Сайт: http://localhost:3000 · Админ: http://localhost:3000/admin (`ADMIN_EMAIL` /
   `ADMIN_PASSWORD` от `.env`; акаунтът се създава при старт на app) · n8n: http://localhost:5678.
 - Чатът работи след настройката на n8n (вижте [Чат агент](#чат-агент-n8n)); без нея widget-ът
@@ -143,7 +143,7 @@ OPENAI_API_KEY=sk-... ./scripts/n8n/setup.sh     # чат агентът (едн
 ```
 
 `COMPOSE_FILE=docker-compose.yml` е задължително на сървъра: иначе Compose зарежда и
-`docker-compose.override.yml` (dev режим, Postgres на порт 5432).
+`docker-compose.override.yml` (dev режим).
 
 **TLS (HTTPS) е извън проекта** — app слуша на HTTP. Варианти:
 

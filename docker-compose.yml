@@ -28,15 +28,16 @@ services:
     volumes:
       # PostgreSQL 18+ образите очакват volume на /var/lib/postgresql (PGDATA е в поддиректория по версия).
       - pgdata:/var/lib/postgresql
+    # Само loopback на хоста: достъп за админ инструменти през SSH тунел.
     ports:
-      - "127.0.0.1:${POSTGRES_DEV_PORT:-5432}:5432"
+      - "${POSTGRES_BIND:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     # Init скриптът е вграден (configs.postgres-init по-долу), а не bind mount от
     # ./docker/: Portainer и други deploy-и само с YAML нямат файловете на проекта.
     configs:
       - source: postgres-init
         target: /docker-entrypoint-initdb.d/01-databases.sh
-    # Без `ports`: Postgres не е достъпен от хоста.
-    networks: [internal]
+    # Публикуван порт изисква мрежа, която не е `internal` → и `egress`.
+    networks: [internal, egress]
     healthcheck:
       # -h 127.0.0.1: временният сървър по време на init слуша само на socket,
       # така че healthcheck-ът минава едва когато init скриптовете са готови.
