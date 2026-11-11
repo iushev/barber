@@ -2,6 +2,19 @@
 # извън проекта. На сървъра задай COMPOSE_FILE=docker-compose.yml в .env, за да
 # не се зарежда docker-compose.override.yml (той е само за локална разработка).
 
+# Общи за n8n и n8n-setup: една база и един ключ за криптиране на credentials.
+x-n8n-db-env: &n8n-db-env
+  DB_TYPE: postgresdb
+  DB_POSTGRESDB_HOST: postgres
+  DB_POSTGRESDB_PORT: 5432
+  DB_POSTGRESDB_DATABASE: n8n
+  DB_POSTGRESDB_USER: ${N8N_DB_USER:-n8n}
+  DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD}
+  N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?задай N8N_ENCRYPTION_KEY}
+  GENERIC_TIMEZONE: Europe/Sofia
+  TZ: Europe/Sofia
+  N8N_DIAGNOSTICS_ENABLED: "false"
+
 x-logging: &default-logging
   driver: json-file
   options:
@@ -108,6 +121,34 @@ services:
       start_period: 30s
     logging: *default-logging
 
+  # One-shot: внася credentials и workflow-ите (от образа) и ги публикува, после спира.
+  # Пуска се при всеки deploy преди n8n. Логовете: `docker logs barbershop-n8n-setup`.
+  n8n-setup:
+    build:
+      context: ./n8n
+    image: ${N8N_SETUP_IMAGE:-ghcr.io/iushev/barber-n8n-setup}:${APP_IMAGE_TAG:-0.0.1}
+    container_name: barbershop-n8n-setup
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *n8n-db-env
+      AGENT_API_KEY: ${AGENT_API_KEY:-}
+      N8N_CHAT_USER: ${N8N_CHAT_USER:-}
+      N8N_CHAT_PASSWORD: ${N8N_CHAT_PASSWORD:-}
+      # По избор: без него OpenAI credential-ът в n8n се запазва (или се въвежда в редактора).
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      # 1 → импорт дори ако workflow-ите не са променени (напр. след ръчна редакция в UI).
+      FORCE_WORKFLOW_IMPORT: ${FORCE_WORKFLOW_IMPORT:-}
+    volumes:
+      # Същата config директория като n8n (ключът за криптиране се сверява с нея).
+      - n8n_data:/home/node/.n8n
+    networks: [internal]
+    logging: *default-logging
+
   n8n:
     image: docker.n8n.io/n8nio/n8n:2.47.3
     container_name: barbershop-n8n
@@ -115,24 +156,21 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      # Workflow-ите и credentials се внасят преди старта → webhook-ите се регистрират.
+      # restart: при нов образ/конфигурация на setup-а n8n се рестартира след него —
+      # импорт при работещ n8n разрегистрира webhook-ите до рестарт.
+      n8n-setup:
+        condition: service_completed_successfully
+        restart: true
     environment:
-      DB_TYPE: postgresdb
-      DB_POSTGRESDB_HOST: postgres
-      DB_POSTGRESDB_PORT: 5432
-      DB_POSTGRESDB_DATABASE: n8n
-      DB_POSTGRESDB_USER: ${N8N_DB_USER:-n8n}
-      DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD}
-      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?задай N8N_ENCRYPTION_KEY}
-      GENERIC_TIMEZONE: Europe/Sofia
-      TZ: Europe/Sofia
+      <<: *n8n-db-env
       N8N_HOST: ${N8N_HOST:-localhost}
       N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
       N8N_PORT: 5678
       WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://n8n:5678/}
       # Редакторът се ползва през SSH тунел по http → cookie без Secure флаг.
       N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE:-false}
-      # Телеметрия и външни повиквания — изключени.
-      N8N_DIAGNOSTICS_ENABLED: "false"
+      # Телеметрия и външни повиквания — изключени (N8N_DIAGNOSTICS_ENABLED е в anchor-а).
       N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
       N8N_TEMPLATES_ENABLED: "false"
       N8N_PERSONALIZATION_ENABLED: "false"
@@ -152,7 +190,6 @@ services:
       - "${N8N_EDITOR_BIND:-127.0.0.1}:${N8N_EDITOR_PORT:-5678}:5678"
     volumes:
       - n8n_data:/home/node/.n8n
-      - ./n8n:/opt/barber-n8n:ro
     # `egress` е нужна за изходящи заявки към OpenAI API и за loopback порта на
     # редактора (Docker не публикува портове от internal мрежа).
     networks: [internal, egress]

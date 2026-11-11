@@ -119,8 +119,9 @@ npm run db:seed                   # демо данни: 3 бръснаря, 7 �
 | `DATA_RETENTION_MONTHS`                                                  | `24`                      | След колко месеца приключилите резервации се анонимизират автоматично                                             |
 | `SEED_ALLOW_PRODUCTION`                                                  | `no`                      | `yes` позволява `db:seed` при `NODE_ENV=production` (само за демо сървър)                                         |
 
-`OPENAI_API_KEY` **не е** в `.env`: подава се еднократно на `scripts/n8n/setup.sh` и се пази
-само криптиран в n8n.
+`OPENAI_API_KEY` **не е** в `.env`: въвежда се веднъж (в редактора на n8n или с
+`scripts/n8n/setup.sh`) и се пази само криптиран в n8n. По избор може да е env при deploy
+(напр. променлива на стека в Portainer) — тогава `n8n-setup` го обновява при всеки deploy.
 
 Съдържанието, което не идва от базата (име, адрес, телефон, текстове, социални мрежи,
 администратор на лични данни), е в [src/config/site.ts](src/config/site.ts) — в момента са
@@ -139,8 +140,13 @@ cp .env.example .env && chmod 600 .env
 echo "COMPOSE_FILE=docker-compose.yml" >> .env   # без dev override-а!
 docker compose up -d --build
 docker compose logs app                          # миграциите и „ready“
-OPENAI_API_KEY=sk-... ./scripts/n8n/setup.sh     # чат агентът (еднократно)
+OPENAI_API_KEY=sk-... ./scripts/n8n/setup.sh     # OpenAI ключът (еднократно)
 ```
+
+**Portainer (само YAML):** workflow-ите са в образа `ghcr.io/iushev/barber-n8n-setup` (същият
+таг като `APP_IMAGE_TAG`), който услугата `n8n-setup` внася при всеки deploy, преди n8n да
+стартира. OpenAI ключът: променлива `OPENAI_API_KEY` на стека или веднъж в редактора на n8n
+(SSH тунел → Credentials → „Barber · OpenAI“). Логове: `docker logs barbershop-n8n-setup`.
 
 `COMPOSE_FILE=docker-compose.yml` е задължително на сървъра: иначе Compose зарежда и
 `docker-compose.override.yml` (dev режим).
@@ -246,19 +252,24 @@ Trigger (вътрешна мрежа, Basic Auth, streaming) → AI Agent + Open
 temperature 0.2) + Postgres памет → HTTP Request Tools (`list_services`, `get_free_slots`,
 `create_booking`) → `/api/agent/v1/*` (Bearer, идемпотентност) → booking service.
 
-**Първоначална настройка** (идемпотентна, може да се пуска многократно):
+**Настройка — автоматична при всеки deploy:** one-shot услугата `n8n-setup` (образ от
+[n8n/Dockerfile](n8n/Dockerfile), скрипт [n8n/setup.mjs](n8n/setup.mjs)) стартира преди n8n,
+създава credentials (Agent API Bearer, Chat Basic Auth, Postgres за паметта, OpenAI) от env,
+таблицата за паметта и импортира + публикува `n8n/workflows/*.json`. Workflow-ите се
+преимпортират само при промяна (хеш в таблица `barber_n8n_setup`); при нов образ compose
+рестартира n8n след setup-а (`depends_on … restart: true`), за да регистрира webhook-ите.
+
+Ръчно (локално / за смяна на OpenAI ключа) — същият контейнер + рестарт на n8n:
 
 ```bash
-OPENAI_API_KEY=sk-... ./scripts/n8n/setup.sh   # без променливата → пита за ключа
+OPENAI_API_KEY=sk-... ./scripts/n8n/setup.sh   # без променливата → пита; Enter = запази ключа
 # по избор: OPENAI_MODEL=gpt-4.1-mini (по подразбиране)
 ```
 
-Скриптът създава credentials (OpenAI, Agent API Bearer, Chat Basic Auth, Postgres за паметта)
-от `.env` + ключа, импортира и публикува `n8n/workflows/*.json` и рестартира n8n.
-
 **Промяна на агента:** редактирайте `n8n/prompts/agent-system-prompt.md` или
 `scripts/n8n/build-workflows.mjs` → `npm run n8n:build` → `./scripts/n8n/setup.sh`. Не
-редактирайте workflow-а само в UI-то на n8n — ще бъде презаписан при следващия setup.
+редактирайте workflow-а само в UI-то на n8n — ще бъде презаписан при следващия setup
+(при deploy — само ако workflow-ите в образа са променени; `FORCE_WORKFLOW_IMPORT=1` винаги).
 Данните на бръснарницата в промпта (адрес, телефон) се поддържат ръчно в синхрон с
 `src/config/site.ts`.
 
@@ -326,6 +337,6 @@ SMOKE_MOCK=1 npm run test:smoke       # чатът през n8n (с мока)
 | app се рестартира в цикъл                   | `docker compose logs app`: невалиден `.env` (името на променливата е в грешката) или неуспешна миграция      |
 | Входът в админа „не запомня“ сесията        | `COOKIE_SECURE=true` без HTTPS                                                                               |
 | Rate limit удря всички потребители наведнъж | Зад proxy без `TRUST_PROXY=true` всички заявки идват от един IP                                              |
-| Чатът казва „временно не е достъпен“        | `docker compose logs n8n`; пуснат ли е `setup.sh`; валиден ли е OpenAI ключът / има ли кредит                |
+| Чатът казва „временно не е достъпен“        | `docker logs barbershop-n8n-setup`, `docker compose logs n8n`; валиден ли е OpenAI ключът / има ли кредит    |
 | Линкът към резервацията сочи към localhost  | `PUBLIC_BASE_URL` в `.env`                                                                                   |
 | Буквите изглеждат с „руски“ форми (д, л, ж) | Българските форми зависят от шрифта (`lang="bg"` + OpenType `locl`); при нужда сменете шрифта в `layout.tsx` |
