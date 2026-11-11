@@ -28,7 +28,7 @@
 ### Postgres
 
 - Volume на `/var/lib/postgresql` (изискване на образите 18+).
-- Init скриптът `docker/postgres-init/01-databases.sh` създава `barbershop` (собственик: app
+- Init скриптът `configs.postgres-init` в `docker-compose.yml` създава `barbershop` (собственик: app
   потребителят → може да създаде trusted разширението `btree_gist`) и `n8n` (собственик: n8n
   потребителят) и маха `CONNECT` от `PUBLIC` → всеки потребител влиза само в своята база
   (проверено: `User does not have CONNECT privilege`).
