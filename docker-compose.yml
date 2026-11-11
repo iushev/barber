@@ -28,6 +28,8 @@ services:
     volumes:
       # PostgreSQL 18+ образите очакват volume на /var/lib/postgresql (PGDATA е в поддиректория по версия).
       - pgdata:/var/lib/postgresql
+    ports:
+      - "127.0.0.1:${POSTGRES_DEV_PORT:-5432}:5432"
     # Init скриптът е вграден (configs.postgres-init по-долу), а не bind mount от
     # ./docker/: Portainer и други deploy-и само с YAML нямат файловете на проекта.
     configs:
