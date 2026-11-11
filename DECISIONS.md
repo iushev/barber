@@ -272,6 +272,16 @@ argon2id чрез вградения `node:crypto.argon2` (Node ≥ 24.7) — н
   `n8n/prompts/agent-system-prompt.md` → двете копия не могат да се разминат;
   `npm run n8n:build -- --check` за CI), импортират се, публикуват се (`n8n publish:workflow`) и
   n8n се рестартира. Скриптът е идемпотентен.
+- **Автоматичен setup при deploy (Portainer):** Portainer деплойва само YAML-а, без файловете
+  на проекта → `setup.sh` и `./n8n` ги няма на сървъра и workflow-ите никога не се внасяха.
+  Логиката е преместена в `n8n/setup.mjs`, вграден в образ `barber-n8n-setup` (FROM същата
+  версия на n8n, публикува се от CI със същите тагове като app). Compose услугата `n8n-setup`
+  се изпълнява преди n8n (`service_completed_successfully`). Проверено: импорт при **работещ**
+  n8n разрегистрира webhook-ите (404 до рестарт) → (1) импорт само при променен хеш на
+  workflow-ите, (2) `restart: true` в `depends_on` рестартира n8n, когато setup-ът е пресъздаден
+  (нов образ/env). `pg` се взима от node_modules на n8n (в образа няма `psql`).
+  `OPENAI_API_KEY` е по избор: без него съществуващият credential се запазва, а при липса се
+  създава празен за попълване в редактора. `setup.sh` пуска същия контейнер (`docker compose run`).
 - Адресът и телефонът в промпта дублират `src/config/site.ts` (агентът няма отделен
   endpoint за тях) — при смяна обновете и двете и пуснете `npm run n8n:build` + setup.
 
