@@ -12,3 +12,6 @@ playwright-report
 test-results
 .DS_Store
 /backups/
+
+# Локални настройки на Database Client (съдържат пароли)
+.vscode/database-client-config.json
