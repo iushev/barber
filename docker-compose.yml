@@ -150,7 +150,7 @@ services:
     logging: *default-logging
 
   n8n:
-    image: docker.n8n.io/n8nio/n8n:2.47.3
+    image: ghcr.io/n8n-io/n8n:2.47.3
     container_name: barbershop-n8n
     restart: unless-stopped
     depends_on:
