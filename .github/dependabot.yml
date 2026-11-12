@@ -1,0 +1,11 @@
+# GitHub Actions са закачени към commit SHA (защита от преместен таг в чужд repo).
+# Dependabot обновява SHA-тата и коментара с версията чрез PR веднъж седмично.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
