@@ -15,3 +15,6 @@ test-results
 
 # Локални настройки на Database Client (съдържат пароли)
 .vscode/database-client-config.json
+
+# Локални доклади от /cso (security audit)
+.gstack/
